@@ -21,6 +21,3 @@ class Submission(Base):
     status = Column(SQLEnum(SubmissionStatus), default=SubmissionStatus.PENDING, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     processed_at = Column(DateTime, nullable=True)
-
-    def __repr__(self):
-        return f"<Submission(id={self.id}, status={self.status})>"

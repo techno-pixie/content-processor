@@ -1,5 +1,5 @@
-import './SubmissionStatus.css';
-
+import './SubmissionStatus.scss';
+import moment from 'moment-timezone';
 function SubmissionStatus({ submission }) {
   const getStatusClass = (status) => {
     switch (status) {
@@ -15,30 +15,16 @@ function SubmissionStatus({ submission }) {
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'PASSED':
-        return '✓';
-      case 'FAILED':
-        return '✗';
-      case 'PROCESSING':
-        return '⟳';
-      case 'PENDING':
-        return '⧗';
-      default:
-        return '';
-    }
-  };
-
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
+    const tz = moment.tz.guess();
+    const time = moment.utc(dateString).clone().tz(tz).format('YYYY-MM-DD hh:mm:ss a');
+    return time;
   };
 
   return (
     <div className={`submission-card ${getStatusClass(submission.status)}`}>
       <div className="card-header">
         <div className="status-badge">
-          <span className="icon">{getStatusIcon(submission.status)}</span>
           <span className="status-text">{submission.status}</span>
         </div>
         <code className="submission-id">{submission.id.substring(0, 8)}...</code>

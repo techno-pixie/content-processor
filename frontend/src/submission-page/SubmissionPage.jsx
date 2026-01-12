@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { submitContent, getSubmissionStatus } from '../services/api';
-import SubmissionForm from './SubmissionForm';
-import SubmissionStatus from './SubmissionStatus';
-import './App.css';
-
-function App() {
+import { submitContent, getSubmissionStatus } from './api/submissionAPI';
+import SubmissionForm from './submission-form/SubmissionForm';
+import SubmissionStatus from './submission-status/SubmissionStatus';
+import './SubmissionPage.scss';
+function SubmissionPage() {
   const [submissions, setSubmissions] = useState([]);
 
   const handleSubmit = async (content) => {
@@ -71,4 +70,4 @@ function App() {
   );
 }
 
-export default App;
+export default SubmissionPage;
