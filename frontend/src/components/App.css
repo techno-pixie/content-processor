@@ -1,0 +1,73 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 40px 0 30px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 40px;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+  color: var(--primary-color);
+}
+
+.header p {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+}
+
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-bottom: 40px;
+}
+
+.form-section {
+  min-height: 300px;
+}
+
+.results-section {
+  min-height: 300px;
+}
+
+.results-section h2 {
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px 20px;
+  background-color: white;
+  border-radius: var(--border-radius);
+  border: 1px dashed var(--border-color);
+}
+
+.submissions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 1.8rem;
+  }
+
+  .main {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+}

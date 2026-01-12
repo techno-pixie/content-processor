@@ -1,0 +1,75 @@
+.submission-form {
+  background-color: white;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 30px;
+  box-shadow: var(--shadow);
+}
+
+.submission-form h2 {
+  margin-bottom: 20px;
+  font-size: 1.3rem;
+  color: var(--primary-color);
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-group textarea:disabled {
+  background-color: var(--bg-light);
+  color: var(--text-secondary);
+}
+
+.form-group small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.submission-form button {
+  width: 100%;
+  padding: 12px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.submission-form button:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.submission-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

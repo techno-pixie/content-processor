@@ -1,0 +1,172 @@
+.submission-card {
+  background-color: white;
+  border-left: 4px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.submission-card.status-pending,
+.submission-card.status-processing {
+  border-left-color: var(--pending-color);
+  background-color: #fffbeb;
+}
+
+.submission-card.status-passed {
+  border-left-color: var(--success-color);
+  background-color: #f0fdf4;
+}
+
+.submission-card.status-failed {
+  border-left-color: var(--failure-color);
+  background-color: #fef2f2;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  gap: 10px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.status-badge .icon {
+  font-size: 1.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  animation: spin 2s linear infinite;
+}
+
+.status-pending .icon,
+.status-processing .icon {
+  color: var(--pending-color);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-passed .icon {
+  color: var(--success-color);
+  animation: none;
+}
+
+.status-failed .icon {
+  color: var(--failure-color);
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-pending .status-text {
+  color: #b45309;
+}
+
+.status-processing .status-text {
+  color: #b45309;
+}
+
+.status-passed .status-text {
+  color: #047857;
+}
+
+.status-failed .status-text {
+  color: #dc2626;
+}
+
+.submission-id {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: 'Courier New', monospace;
+  color: var(--text-secondary);
+}
+
+.card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.content-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.content-block strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.content-block p {
+  word-break: break-word;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  background-color: rgba(0, 0, 0, 0.02);
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.timestamps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.timestamp {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timestamp .label {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.timestamp .value {
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+@media (max-width: 768px) {
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .submission-card {
+    padding: 15px;
+  }
+}
