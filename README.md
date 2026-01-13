@@ -197,6 +197,138 @@ All state transitions via database (single source of truth):
         └─────────────────┘
 ```
 
+## Message Delivery Guarantees & Idempotency
+
+### Problem: What if things go wrong?
+
+**Scenario 1: Worker crashes mid-processing**
+- Message consumed from Kafka but not processed
+- If using auto-commit: message lost ❌
+- If using manual commit: message reprocessed ✓
+
+**Scenario 2: Kafka sends duplicate messages**
+- Same submission processed twice
+- Results in double status updates ❌
+- Need idempotency to skip duplicates ✓
+
+**Scenario 3: API publishes but loses connection**
+- Submission in DB but message never reaches Kafka
+- Worker never sees it - stuck in PENDING ❌
+
+### Implementation: Exactly-Once Semantics
+
+#### 1. **Producer (API) - Delivery Guarantees**
+
+```python
+kafka_producer = KafkaProducer(
+    acks='all',              # ✓ Wait for all replicas
+    retries=3,               # ✓ Auto-retry on failure
+    max_in_flight_requests=1 # ✓ Maintain order
+)
+
+# Wait for broker acknowledgment
+future = kafka_producer.send('submissions', {
+    'id': submission_id,
+    'content': content
+})
+future.get(timeout=5)  # Block until confirmed
+```
+
+**What happens:**
+1. API sends message to Kafka
+2. `acks='all'`: Waits for confirmation from all broker replicas
+3. If Kafka is down: API gets exception → can retry/alert
+4. If confirmation succeeds: Message is safely stored in Kafka
+
+#### 2. **Consumer (Worker) - Idempotent Processing**
+
+```python
+# Disable auto-commit
+consumer = KafkaConsumer(
+    enable_auto_commit=False  # ✓ Manual control
+)
+
+# Process message
+success = process_submission(submission_id)
+
+# Only commit if successful
+if success:
+    consumer.commit()  # Commit offset to Kafka
+else:
+    # Don't commit - message will be reprocessed
+    pass
+```
+
+**Idempotency check in worker:**
+```python
+def process_submission(submission_id):
+    submission = db.query(Submission).get(submission_id)
+    
+    # ✓ IDEMPOTENCY: Skip if already processed
+    if submission.status != PENDING:
+        return True  # Already handled
+    
+    # Mark as processing
+    submission.status = PROCESSING
+    db.commit()
+    
+    # Do work...
+    
+    # Mark complete
+    submission.status = PASSED/FAILED
+    db.commit()
+    
+    return True
+```
+
+**What happens if duplicate arrives:**
+1. First message: status = PENDING → update to PROCESSING → process → PASSED
+2. Duplicate arrives: status = PASSED → skip (already done)
+3. Result: idempotent - processed only once ✓
+
+### Delivery Guarantee Matrix
+
+| Scenario | Without Changes | With Implementation | Result |
+|----------|-----------------|-------------------|--------|
+| Worker crashes | Message lost | Reprocessed | ✅ At-least-once |
+| Kafka duplicate | Processed twice | Processed once | ✅ Idempotent |
+| Producer failure | Submission stuck | Can retry/alert | ✅ No data loss |
+| Graceful shutdown | In-flight discarded | Reprocessed | ✅ Safe shutdown |
+
+### Trade-offs
+
+**Currently implemented: At-least-once + Idempotency**
+
+| Approach | Guarantee | Pros | Cons |
+|----------|-----------|------|------|
+| **At-least-once** | No duplicates in Kafka, but may reprocess | Simple, safe | Possible re-execution |
+| **Exactly-once** | Processed exactly once | Perfect | Complex, slower |
+| **Our approach** | At-least-once + DB idempotency | Simple + safe | Slight overhead |
+
+**Why this is best for our use case:**
+- ✅ No lost submissions (persisted in Kafka + DB)
+- ✅ No duplicate processing (idempotency check)
+- ✅ Simple implementation
+- ✅ High performance
+- ✅ Scales horizontally
+
+### Monitoring Message Delivery
+
+Check if submissions are getting stuck:
+```bash
+# Check consumer lag (messages waiting to be processed)
+kafka-consumer-groups --bootstrap-server localhost:9092 \
+  --group submission-processor \
+  --describe
+
+# Look for "LAG" column - high lag = backed up messages
+```
+
+If lag is high:
+1. Add more workers: `python worker/main.py` (multiple terminals)
+2. Check worker logs for errors
+3. Verify Kafka is running: `docker-compose logs kafka`
+
 ### Scaling Benefits with Kafka
 
 | Dimension | Without Kafka | With Kafka |

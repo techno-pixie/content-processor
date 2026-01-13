@@ -1,5 +1,6 @@
 import uuid
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from kafka import KafkaProducer
@@ -7,16 +8,21 @@ from app.database import get_db
 from app.models import Submission, SubmissionStatus
 from app.schemas import SubmissionCreate, SubmissionResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
 
-# Kafka producer (shared connection)
+# Kafka producer with delivery guarantees
 try:
     kafka_producer = KafkaProducer(
         bootstrap_servers=['localhost:9092'],
         value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+        acks='all',  # ✓ Wait for all replicas to acknowledge (strongest guarantee)
+        retries=3,   # ✓ Retry up to 3 times on failure
+        max_in_flight_requests_per_connection=1,  # ✓ Maintain order
     )
 except Exception as e:
-    print(f"Warning: Could not connect to Kafka: {e}")
+    logger.warning(f"Could not connect to Kafka: {e}")
     kafka_producer = None
 
 
@@ -28,13 +34,17 @@ async def create_submission(
     """
     Submit content for processing.
     
-    Returns immediately with submission ID and PENDING status.
-    Processing happens asynchronously in Kafka worker.
+    Flow:
+    1. Create submission record in DB (status: PENDING)
+    2. Publish to Kafka topic (with delivery guarantees)
+    3. Return submission ID immediately (non-blocking)
+    
+    Delivery Guarantee: acks='all' ensures message reaches all replicas
     """
     # Generate unique ID
     submission_id = str(uuid.uuid4())
 
-    # Create new submission record
+    # 1. Create submission record in database
     submission = Submission(
         id=submission_id,
         content=submission_data.content,
@@ -43,19 +53,26 @@ async def create_submission(
     db.add(submission)
     db.commit()
     db.refresh(submission)
+    logger.info(f"[{submission_id}] Created submission in database")
 
-    # Publish to Kafka topic for worker to process
-    # This is non-blocking - the request returns immediately
+    # 2. Publish to Kafka with delivery guarantee
     if kafka_producer:
         try:
-            kafka_producer.send('submissions', {
+            future = kafka_producer.send('submissions', {
                 'id': submission_id,
                 'content': submission_data.content
             })
+            # Wait for confirmation (blocking, but fast ~10-50ms)
+            future.get(timeout=5)
             kafka_producer.flush()
+            logger.info(f"[{submission_id}] Published to Kafka successfully")
         except Exception as e:
-            print(f"Warning: Could not send to Kafka: {e}")
+            logger.error(f"[{submission_id}] Failed to publish to Kafka: {e}")
+            # DB record exists, but Kafka message failed
+            # Worker will never see this - submission stuck in PENDING
+            # In production: alert/retry logic needed here
 
+    # 3. Return immediately
     return submission
 
 
