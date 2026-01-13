@@ -1,6 +1,6 @@
 # Content Processor
 
-A full-stack application that allows users to submit content and track its processing status in real-time. The application demonstrates proper separation of concerns between synchronous API requests and asynchronous background processing.
+A full-stack microservice application that allows users to submit content and track its processing status in real-time. The application uses Kafka as a message broker to decouple the API from the processing workers, enabling true scalability and fault tolerance.
 
 ## Overview
 
@@ -17,172 +17,258 @@ This application implements a three-state processing pipeline:
 
 ```
 content-processor/
-├── backend/                 # FastAPI application
+├── backend/                 # FastAPI API Server (Kafka Producer)
 │   ├── app/
 │   │   ├── models/         # SQLAlchemy ORM models
-│   │   │   └── submission.py
 │   │   ├── schemas/        # Pydantic request/response models
-│   │   │   └── submission.py
 │   │   ├── routes/         # API endpoints
-│   │   │   └── __init__.py
-│   │   ├── workers/        # Async processing logic
-│   │   │   └── processor.py
 │   │   ├── database.py     # Database configuration
 │   │   └── __init__.py     # FastAPI app initialization
 │   ├── main.py             # Entry point
 │   └── requirements.txt
 │
-└── frontend/                # React application
-    ├── src/
-    │   ├── components/      # React components
-    │   │   ├── App.jsx
-    │   │   ├── SubmissionForm.jsx
-    │   │   └── SubmissionStatus.jsx
-    │   ├── services/        # API client
-    │   │   └── api.js
-    │   └── main.jsx
-    ├── package.json
-    └── vite.config.js
+├── worker/                  # Kafka Consumer Worker Service
+│   ├── app/
+│   │   ├── models/         # Shared database models
+│   │   ├── consumer.py     # Kafka consumer logic
+│   │   ├── database.py     # Database configuration
+│   │   └── __init__.py
+│   ├── main.py             # Worker entry point
+│   └── requirements.txt
+│
+├── frontend/                # React Application
+│   ├── src/
+│   │   ├── components/      # React components
+│   │   ├── services/        # API client
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
+│
+├── docker-compose.yml       # Kafka + Zookeeper setup
+└── README.md
 ```
 
 ## Architecture
 
-### Core Design Principles
+### Microservice Design with Kafka
 
-#### 1. **Separation of Concerns**
-- **API Layer**: Handles HTTP requests/responses synchronously
-  - Receives submission, stores in database with PENDING status
-  - Returns immediately with submission ID
-  - Provides endpoint to query status
-  
-- **Worker Layer**: Handles asynchronous processing
-  - Independent from API request/response cycle
-  - Runs in background using asyncio
-  - Updates database state transitions
-
-#### 2. **Non-Blocking Submission**
-```
-User Request → API creates record → Return 200 OK immediately
-                    ↓
-            asyncio.create_task() spawned
-                    ↓
-        Worker begins processing in background
-```
-
-The API does **not** wait for processing. This is critical for scalability:
-- Users get instant feedback (submission ID)
-- API can handle many concurrent submissions
-- Processing doesn't block other requests
-
-#### 3. **State Management**
-All state transitions are managed through the database:
-- **PENDING** → **PROCESSING**: Worker updates when it starts
-- **PROCESSING** → **PASSED/FAILED**: Worker updates when complete
-- Frontend polls status endpoint to see updates
-
-### Component Details
-
-#### Backend (FastAPI)
-
-**Database Schema:**
-```python
-Submission {
-  id: UUID (primary key)
-  content: String
-  status: Enum[PENDING, PROCESSING, PASSED, FAILED]
-  created_at: DateTime
-  processed_at: DateTime (nullable)
-}
-```
-
-**API Endpoints:**
-- `POST /api/submissions/` - Submit content
-  - Request: `{ "content": "string" }`
-  - Response: `{ "id": "uuid", "status": "PENDING", ... }`
-  - Returns immediately, spawns background task
-  
-- `GET /api/submissions/{submission_id}` - Check status
-  - Returns current submission details
-  - Frontend uses this for polling
-  
-- `GET /api/submissions/` - List all submissions
-  - Admin/monitoring endpoint
-
-**Async Worker (`processor.py`):**
-```python
-async def process_submission(submission_id: str):
-    1. Fetch submission from DB
-    2. Update status to PROCESSING
-    3. await asyncio.sleep(5)  # Simulate processing
-    4. Validate content
-    5. Update status to PASSED or FAILED
-    6. Set processed_at timestamp
-```
-
-#### Frontend (React)
-
-**Components:**
-- `App.jsx` - Main container, manages submission list
-- `SubmissionForm.jsx` - Input form for content
-- `SubmissionStatus.jsx` - Status display card
-
-**Real-time Updates:**
-```javascript
-// After successful submission
-const newSubmission = await submitContent(content);
-pollStatus(newSubmission.id);
-
-// Poll every 1 second
-setInterval(() => {
-  const updated = await getSubmissionStatus(submissionId);
-  // Update state with new data
-}, 1000);
-
-// Stop polling when complete
-if (status === 'PASSED' || status === 'FAILED') {
-  clearInterval(pollInterval);
-}
-```
-
-## Scalability Design
-
-### Current Architecture (Single Instance)
+The application follows a **producer-consumer pattern** using Kafka as the message broker:
 
 ```
 ┌─────────────┐
-│  Frontend   │ (React, Static)
+│  Frontend   │ (React)
 └──────┬──────┘
        │ HTTP
-┌──────▼──────────────┐
-│  FastAPI Server     │
-│  ├── API Routes     │
-│  ├── asyncio Task   │
-│  └── SQLite DB      │
-└─────────────────────┘
+┌──────▼──────────────────┐
+│  FastAPI API Server     │ (Kafka Producer)
+│  ├── POST /submissions  │ ✓ Creates DB record
+│  ├── Publishes to Kafka │ ✓ Returns immediately
+│  └── GET /submissions   │ ✓ Queries DB status
+└──────┬──────────────────┘
+       │
+       │ Publish: submission event
+       ▼
+┌──────────────────────────┐
+│   Kafka Topic: "submissions"   │
+│   (Message Queue)        │
+└──────┬──────────────────┘
+       │
+       │ Consume: subscription event
+       ▼
+┌──────────────────────────┐
+│  Kafka Consumer Worker   │ (Process 1)
+│  ├── Consume events      │ 
+│  ├── Validate content    │
+│  └── Update DB status    │
+└──────────────────────────┘
+
+[Additional workers can be added]
+  Worker 2, Worker 3, ... etc.
+  (all consume from same topic)
 ```
 
-### Scaling Strategy (High Volume)
+#### 1. **API Server (Producer)**
+- Receives HTTP submission requests
+- Creates submission record in database (status: PENDING)
+- Publishes event to Kafka topic immediately
+- Returns submission ID to user (non-blocking)
+- Never processes content directly
 
-#### 1. **Separate API and Workers**
-For production with high volume, decouple into separate processes:
+```python
+@router.post("/api/submissions/")
+async def create_submission(content):
+    # 1. Create DB record
+    submission = Submission(id=uuid, content=content, status=PENDING)
+    db.add(submission)
+    db.commit()
+    
+    # 2. Publish to Kafka (non-blocking)
+    kafka_producer.send('submissions', {
+        'id': submission.id,
+        'content': content
+    })
+    
+    # 3. Return immediately
+    return submission  # status: PENDING
+```
+
+#### 2. **Kafka Worker (Consumer)**
+- Listens to Kafka topic "submissions"
+- Consumes submission events one at a time
+- Updates database status: PENDING → PROCESSING
+- Simulates resource-intensive processing (5s sleep)
+- Validates content and updates final status: PROCESSING → PASSED/FAILED
+
+```python
+def start_consumer():
+    consumer = KafkaConsumer('submissions', group_id='submission-processor')
+    
+    for event in consumer:
+        submission_id = event['id']
+        content = event['content']
+        
+        # Update to PROCESSING
+        db.update_status(submission_id, PROCESSING)
+        
+        # Simulate work
+        time.sleep(5)
+        
+        # Validate & finalize
+        is_valid = validate(content)
+        final_status = PASSED if is_valid else FAILED
+        db.update_status(submission_id, final_status)
+```
+
+#### 3. **Key Advantages**
+
+| Aspect | Benefit |
+|--------|---------|
+| **Decoupling** | API and workers are completely independent |
+| **Scaling** | Add workers without modifying API |
+| **Fault Tolerance** | Kafka stores messages; workers can restart safely |
+| **Load Balancing** | Multiple workers share consumer group automatically |
+| **Non-blocking** | API returns immediately; no waiting for processing |
+| **Persistence** | Kafka retains messages; no lost submissions |
+| **Monitoring** | Kafka UI available at `http://localhost:8080` |
+
+#### 4. **State Management**
+All state transitions via database (single source of truth):
+- **PENDING** → **PROCESSING**: Worker updates upon consuming event
+- **PROCESSING** → **PASSED/FAILED**: Worker updates after validation
+- Frontend polls `/api/submissions/{id}` to check current status
+
+## Scalability Design
+
+### Current Architecture (Kafka + Multiple Workers)
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                                                      │
-│  API Servers (Stateless)                            │
-│  ├── POST /submissions → DB insert + Queue task    │
-│  ├── GET /submissions/{id} → Query DB              │
-│  └── (no processing logic)                         │
-│                                                      │
-└───────────────┬────────────────────────────────────┘
-                │
-        ┌───────▼────────┐
-        │ Message Queue  │ (Redis/RabbitMQ)
-        │ (Task Queue)   │
-        └───────┬────────┘
-                │
-    ┌───────────┼──────────────┐
-    │           │              │
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│  Load Balancer / API Gateway                           │
+│                                                         │
+└──────────────┬──────────────────────────────────────────┘
+               │
+    ┌──────────┼──────────┐
+    │          │          │
+┌───▼──┐   ┌───▼──┐   ┌──▼───┐
+│ API  │   │ API  │   │ API  │  (Stateless - scale horizontally)
+│Srv 1 │   │Srv 2 │   │Srv 3 │
+└───┬──┘   └───┬──┘   └──┬───┘
+    │          │         │
+    └──────────┼─────────┘
+               │
+        ┌──────▼─────────┐
+        │ Kafka Broker   │
+        │ Topic: "submissions"  │
+        └──────┬─────────┘
+               │
+    ┌──────────┼──────────┐
+    │          │          │
+┌───▼──┐   ┌───▼──┐   ┌──▼───┐
+│Worker│   │Worker│   │Worker│  (Consumer group - auto-balanced)
+│ 1    │   │ 2    │   │ 3    │
+└───┬──┘   └───┬──┘   └──┬───┘
+    │          │         │
+    └──────────┼─────────┘
+               │
+        ┌──────▼──────────┐
+        │  PostgreSQL DB  │
+        │ (Shared State)  │
+        └─────────────────┘
+```
+
+### Scaling Benefits with Kafka
+
+| Dimension | Without Kafka | With Kafka |
+|-----------|---------------|-----------|
+| **API Instances** | Limited by in-process workers | Unlimited - stateless |
+| **Worker Instances** | 1 per server | N per consumer group |
+| **Message Loss** | Possible if process crashes | Persisted, replay-able |
+| **Throughput** | Single process limited | Scales linearly with workers |
+| **Fault Tolerance** | Poor - process death loses tasks | Excellent - Kafka stores events |
+| **Max Load** | ~100 req/sec per instance | 10,000+ req/sec with workers |
+
+### Horizontal Scaling Example
+
+**Scale to 10x load:**
+
+```bash
+# Terminal 1: Start multiple API servers (behind load balancer)
+uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
+uvicorn main:app --host 0.0.0.0 --port 8002
+
+# Terminal 2-4: Start multiple workers (auto-balanced by Kafka)
+python worker/main.py  # Worker 1 - processes 33% of messages
+python worker/main.py  # Worker 2 - processes 33% of messages
+python worker/main.py  # Worker 3 - processes 33% of messages
+```
+
+Kafka automatically distributes messages among workers. Add/remove workers dynamically.
+
+### Future Enhancements for Even Higher Scale
+
+**If you need to handle millions of events/sec:**
+
+1. **Kafka Partitioning**
+   - Split topic into multiple partitions
+   - Workers distributed across partitions
+   - Parallel processing of multiple submissions simultaneously
+
+2. **Database Optimization**
+   ```python
+   # Switch from SQLite to PostgreSQL
+   DATABASE_URL = "postgresql://user:pass@postgres-server/submissions"
+   
+   # Add connection pooling
+   from sqlalchemy.pool import QueuePool
+   engine = create_engine(DATABASE_URL, poolclass=QueuePool, pool_size=20)
+   ```
+
+3. **Kubernetes Deployment**
+   ```yaml
+   # Scale API and workers independently
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: api-server
+   spec:
+     replicas: 10  # 10 API instances
+   ---
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: kafka-worker
+   spec:
+     replicas: 50  # 50 worker instances
+   ```
+
+4. **Monitoring & Alerts**
+   - Consumer lag monitoring (backlog of unprocessed messages)
+   - Kafka metrics (throughput, latency)
+   - Alert if consumer lag > 1000 messages
+
+### Current Architecture (Single Instance)
 ┌───▼──┐   ┌───▼──┐   ┌───▼──┐
 │Worker│   │Worker│   │Worker│  (Scale horizontally)
 │  1   │   │  2   │   │  N   │
@@ -294,7 +380,28 @@ DATABASE_URL = "postgresql://user:password@localhost/content_processor"
 
 ## Running the Application
 
-### Backend Setup
+### Prerequisites
+
+Ensure Docker is installed (for Kafka). If not:
+- [Install Docker](https://docs.docker.com/get-docker/)
+
+### Step 1: Start Kafka & Zookeeper
+
+```bash
+cd content-processor
+docker-compose up -d
+```
+
+Wait for Kafka to be ready (~15 seconds):
+```bash
+docker-compose logs kafka
+# Look for "started (kafka.server.KafkaServer)"
+```
+
+✓ Kafka will be available at `localhost:9092`  
+✓ Kafka UI (optional monitoring) at `http://localhost:8080`
+
+### Step 2: Backend Setup
 
 ```bash
 cd backend
@@ -304,9 +411,30 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API will be available at `http://localhost:8000`
+✓ API available at `http://localhost:8000`
 
-### Frontend Setup
+### Step 3: Start Kafka Worker (new terminal)
+
+```bash
+cd worker
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+You should see:
+```
+============================================================
+Kafka Consumer Worker Started
+============================================================
+
+INFO: [submission-id] Received submission event from Kafka
+INFO: [submission-id] Status: PENDING -> PROCESSING
+INFO: [submission-id] Status: PROCESSING -> PASSED
+```
+
+### Step 4: Frontend Setup (new terminal)
 
 ```bash
 cd frontend
@@ -314,26 +442,37 @@ npm install
 npm run dev
 ```
 
-Frontend will be available at `http://localhost:3000` (or `http://localhost:5173`)
+✓ Frontend available at `http://localhost:3000` (or `http://localhost:5173`)
 
-### Testing
+### Testing the Application
 
 1. Open `http://localhost:3000` in browser
 2. Submit content in the form
 3. Watch status update in real-time (PENDING → PROCESSING → PASSED/FAILED)
 4. Try different content:
-   - Valid: "This contains number 42" (length ≥ 10, has digit)
-   - Invalid: "short" (too short)
-   - Invalid: "this has no numbers" (length ≥ 10, but no digit)
+   - ✅ Valid: "This contains number 42" (length ≥ 10, has digit)
+   - ❌ Invalid: "short" (too short)
+   - ❌ Invalid: "this has no numbers" (length ≥ 10, but no digit)
+5. Check Kafka UI: `http://localhost:8080` to see topic and messages
 
 ### Database
 
-SQLite database is created automatically at `backend/submissions.db`
+SQLite database created automatically at `backend/submissions.db` and `worker/submissions.db`
 
-View submissions:
+View submissions (backend):
 ```bash
-sqlite3 submissions.db
-> SELECT id, content, status, created_at FROM submissions;
+sqlite3 backend/submissions.db
+> SELECT id, content, status, created_at, processed_at FROM submissions;
+```
+
+### Stopping Services
+
+```bash
+# Stop Kafka & Zookeeper
+docker-compose down
+
+# Deactivate Python virtual environments
+deactivate
 ```
 
 ## API Documentation
@@ -341,6 +480,7 @@ sqlite3 submissions.db
 Once running, visit:
 - **Swagger UI**: `http://localhost:8000/docs`
 - **ReDoc**: `http://localhost:8000/redoc`
+- **Kafka UI**: `http://localhost:8080` (optional, for monitoring)
 
 ## Key Design Decisions
 

@@ -1,13 +1,23 @@
 import uuid
-import asyncio
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from kafka import KafkaProducer
 from app.database import get_db
 from app.models import Submission, SubmissionStatus
 from app.schemas import SubmissionCreate, SubmissionResponse
-from app.workers import process_submission
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
+
+# Kafka producer (shared connection)
+try:
+    kafka_producer = KafkaProducer(
+        bootstrap_servers=['localhost:9092'],
+        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+    )
+except Exception as e:
+    print(f"Warning: Could not connect to Kafka: {e}")
+    kafka_producer = None
 
 
 @router.post("/", response_model=SubmissionResponse)
@@ -19,7 +29,7 @@ async def create_submission(
     Submit content for processing.
     
     Returns immediately with submission ID and PENDING status.
-    Processing happens asynchronously in the background.
+    Processing happens asynchronously in Kafka worker.
     """
     # Generate unique ID
     submission_id = str(uuid.uuid4())
@@ -34,9 +44,17 @@ async def create_submission(
     db.commit()
     db.refresh(submission)
 
-    # Start async processing task
+    # Publish to Kafka topic for worker to process
     # This is non-blocking - the request returns immediately
-    asyncio.create_task(process_submission(submission_id))
+    if kafka_producer:
+        try:
+            kafka_producer.send('submissions', {
+                'id': submission_id,
+                'content': submission_data.content
+            })
+            kafka_producer.flush()
+        except Exception as e:
+            print(f"Warning: Could not send to Kafka: {e}")
 
     return submission
 

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
-from app.routes import router as submissions_router
+from app.routes.submissions import router as submissions_router
 
 # Initialize database
 init_db()
@@ -9,7 +9,7 @@ init_db()
 app = FastAPI(
     title="Content Processor API",
     description="API for submitting and tracking content processing",
-    version="1.0.0"
+    version="2.0.0 (Kafka-based)"
 )
 
 # Configure CORS
