@@ -70,12 +70,14 @@ class TestFastAPIPollConsumer:
         mock_submission.id = "test-id"
         mock_submission.content = "Test content 123"
         mock_submission.status = SubmissionStatus.PENDING
+        mock_submission.processing_started_at = None
+        mock_submission.processing_started_at = None
         
         mock_repository.get_by_id = AsyncMock(return_value=mock_submission)
         mock_repository.update_status = AsyncMock(return_value=mock_submission)
         mock_validator.validate.return_value = True
         
-        await fastapi_consumer._process_async("test-id", "Test content 123")
+        await fastapi_consumer.processor.process_submission("test-id", "Test content 123")
         
         assert mock_validator.validate.called
         mock_validator.validate.assert_called_with("Test content 123")
@@ -91,12 +93,13 @@ class TestFastAPIPollConsumer:
         mock_submission.id = "test-id"
         mock_submission.content = "short"
         mock_submission.status = SubmissionStatus.PENDING
+        mock_submission.processing_started_at = None
         
         mock_repository.get_by_id = AsyncMock(return_value=mock_submission)
         mock_repository.update_status = AsyncMock(return_value=mock_submission)
         mock_validator.validate.return_value = False
         
-        await fastapi_consumer._process_async("test-id", "short")
+        await fastapi_consumer.processor.process_submission("test-id", "short")
         
         assert mock_validator.validate.called
         
@@ -108,7 +111,7 @@ class TestFastAPIPollConsumer:
     async def test_process_async_submission_not_found(self, fastapi_consumer, mock_repository, mock_validator):
         mock_repository.get_by_id = AsyncMock(return_value=None)
         
-        await fastapi_consumer._process_async("nonexistent-id", "content")
+        await fastapi_consumer.processor.process_submission("nonexistent-id", "content")
         
         assert mock_repository.get_by_id.called
         mock_repository.get_by_id.assert_called_with("nonexistent-id")
@@ -119,12 +122,13 @@ class TestFastAPIPollConsumer:
         mock_submission.id = "test-id"
         mock_submission.content = "Test content 123"
         mock_submission.status = SubmissionStatus.PENDING
+        mock_submission.processing_started_at = None
         
         mock_repository.get_by_id = AsyncMock(return_value=mock_submission)
         mock_repository.update_status = AsyncMock(return_value=mock_submission)
         mock_validator.validate.return_value = True
         
-        await fastapi_consumer._process_async("test-id", "Test content 123")
+        await fastapi_consumer.processor.process_submission("test-id", "Test content 123")
         
         assert mock_repository.update_status.called
         calls = mock_repository.update_status.call_args_list
@@ -137,12 +141,13 @@ class TestFastAPIPollConsumer:
         mock_submission.id = "test-id"
         mock_submission.content = "Test content"
         mock_submission.status = SubmissionStatus.PENDING
+        mock_submission.processing_started_at = None
         
         mock_repository.get_by_id = AsyncMock(return_value=mock_submission)
         mock_repository.update_status = AsyncMock(side_effect=Exception("DB Error"))
         mock_validator.validate.return_value = True
         
-        await fastapi_consumer._process_async("test-id", "Test content")
+        await fastapi_consumer.processor.process_submission("test-id", "Test content")
         assert mock_repository.get_by_id.called
 
 
@@ -173,7 +178,7 @@ class TestCrashSafetyAndIdempotency:
         mock_repository.update_status.return_value = None
         mock_validator.validate.return_value = True
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert mock_repository.update_status.call_count == 2  # PROCESSING and PASSED
         first_call = mock_repository.update_status.call_args_list[0]
@@ -183,7 +188,7 @@ class TestCrashSafetyAndIdempotency:
         
         mock_repository.update_status.reset_mock()
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert not mock_repository.update_status.called
 
@@ -204,7 +209,7 @@ class TestCrashSafetyAndIdempotency:
         )
         mock_repository.get_by_id.return_value = submission_already_passed
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert not mock_repository.update_status.called
 
@@ -237,12 +242,12 @@ class TestCrashSafetyAndIdempotency:
         mock_repository.update_status.return_value = None
         mock_validator.validate.return_value = True
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         assert mock_repository.update_status.call_count == 2  
         
         mock_repository.update_status.reset_mock()
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         assert not mock_repository.update_status.called  
 
 
@@ -253,7 +258,7 @@ class TestCrashSafetyAndIdempotency:
         consumer = FastAPIPoll(mock_repository, mock_validator, poll_interval=0.1)
         mock_repository.get_by_id.return_value = None
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert not mock_repository.update_status.called
 
@@ -276,7 +281,7 @@ class TestCrashSafetyAndIdempotency:
         mock_repository.update_status.side_effect = Exception("Database connection lost")
         mock_validator.validate.return_value = True
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert mock_repository.update_status.called
 
@@ -313,7 +318,7 @@ class TestCrashSafetyAndIdempotency:
         mock_repository.update_status.return_value = None
         mock_validator.validate.return_value = True
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert mock_repository.update_status.called
         calls = mock_repository.update_status.call_args_list
@@ -321,7 +326,7 @@ class TestCrashSafetyAndIdempotency:
         
         mock_repository.update_status.reset_mock()
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert mock_repository.update_status.call_count == 2
         assert mock_repository.update_status.call_args_list[0][0][1] == SubmissionStatus.PROCESSING
@@ -347,7 +352,7 @@ class TestCrashSafetyAndIdempotency:
         
         mock_repository.get_by_id.return_value = submission_active_processing
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert not mock_repository.update_status.called
 
@@ -376,7 +381,7 @@ class TestCrashSafetyAndIdempotency:
         mock_repository.update_status.return_value = None
         mock_validator.validate.return_value = True
         
-        await consumer._process_async(submission_id, content)
+        await consumer.processor.process_submission(submission_id, content)
         
         assert mock_repository.update_status.called
         first_call = mock_repository.update_status.call_args_list[0]

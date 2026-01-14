@@ -11,7 +11,7 @@ KAFKA_BOOTSTRAP_SERVERS: List[str] = os.getenv(
 KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'submissions')
 KAFKA_GROUP_ID = os.getenv('KAFKA_GROUP_ID', 'submission-processor')
 
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./submissions.db')
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite+aiosqlite:///./submissions.db')
 
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 

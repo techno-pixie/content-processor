@@ -1,21 +1,28 @@
 ## Architecture
 
-**Three-tier design:**
+**Current: Single Application with Logical Layers**
 
-1. **API (FastAPI)** - Accepts submissions, stores them, queues jobs, returns immediately
-2. **Job Queue** - Holds work to be processed (currently FastAPI, Kafka in production)
-3. **Worker** - Processes jobs asynchronously in the background
+Application runs as one process with two main components:
 
-## Why This Design?
+1. **API Layer (FastAPI)** - Handles HTTP requests, accepts submissions, stores them
+2. **Worker Layer** - Processes jobs asynchronously in the background
+3. **Shared Database** - API and Worker communicate only through database
 
-Traditional request-response models make the user wait for validation to complete. This architecture decouples submission from processing:
+Both layers run in the same Python process, but are logically separated. The Worker picks up jobs created by the API.
 
-- User submits → API returns immediately (no waiting)
-- Processing happens in background → User polls for status
-- Multiple workers can process independently
-- If a worker crashes → Another worker picks up the job automatically
+```
+Single Process (main.py)
+├── FastAPI API Routes
+│   └── Creates PENDING submissions
+│
+├── Background Worker (FastAPI Poll or Kafka Consumer)
+│   └── Processes submissions
+│   └── Updates status (PENDING → PROCESSING → PASSED/FAILED)
+│
+└── Shared Database
+```
 
-This is how production systems at scale handle long-running operations.
+This approach is practical for development and moderate volume. When we need massive scale, we can split these into separate services (true 3-tier), but the logic stays the same.
 
 ## How It Works
 
@@ -38,58 +45,64 @@ Frontend polls for updates
 
 ## Scaling to High Volume
 
-The beauty of this design: **Each layer scales independently.**
+The beauty of this design: You can evolve from single process to distributed services.
 
-### Current (Development)
-- 1 API + 1 Worker
+### Current (Single Process)
+- 1 process runs API + Worker
 - Handles ~100 submissions/day
-- Single process, no external services
+- No external services needed
+- Fast for development and testing
 
-### Growing (1K submissions/day)
+### Production (Separate Services)
 ```
-2 API instances (load balanced)
-  → Each handles 200 requests/sec
-5 Worker instances
-  → Processes 5x faster
-Same database
-```
-
-### High Volume (100K+ submissions/day)
-```
-10 API instances
-50 Worker instances
-Kafka (message broker)
-Load balancer distributing traffic
+API Server         Worker Service 1
+    ↓                      ↓
+Kafka Topic ← messages flow through
+    ↓                      ↓
+        Shared Database
 ```
 
-Each layer scales independently. Add more workers when processing backs up. Add more APIs when submissions increase. No bottlenecks, no coupling.
+To scale:
+1. Extract Worker into separate `worker.py` service
+2. Run multiple Worker instances consuming from Kafka
+3. Run multiple API instances
+4. Each scales independently
+
+**The code is already ready for this** - `SubmissionProcessor` works with any queue system (Kafka or polling). Just deploy as separate services.
 
 ## Development vs Production
 
-### Right Now (FastAPI Worker)
-- Using FastAPI background polling
-- No external dependencies
-- Single `python main.py` to run everything
-- Fast iteration and debugging
+### Right Now (Single Process)
+- API and Worker in same process
+- Use FastAPI polling for simple jobs or Kafka for more throughput
+- No external dependencies (except Kafka if chosen)
+- Perfect for development, testing, and moderate load
 
-**Limitations:** Workers don't persist. If the process crashes, jobs can be lost.
+**How to run:**
+```bash
+# Development: FastAPI producer/consumer
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-### Production (Kafka)
-- Replace queue with **Kafka**
-- Multiple workers consume from same topic
-- Kafka persists all messages (no job loss)
-- Automatic load balancing (Kafka distributes to workers)
-- Scales to millions of messages/second
-
-**Code change:** Only the producer/consumer implementation. Validation logic stays the same.
-
-```python
-# Development: FastAPI produces jobs
-queue.enqueue(job)
-
-# Production: Kafka produces jobs
-kafka_producer.send("submissions_topic", job)
+# Production-ready: Kafka producer/consumer
+USE_KAFKA=true uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+
+The submission processing logic is shared in `SubmissionProcessor` - same validation, same status updates, same timeout handling. Only the queue implementation changes.
+
+**Limitation:** If the process crashes, jobs being processed are lost (mitigated by 5-minute timeout that resets stuck jobs).
+
+### When You Scale (Separate Services)
+Split into separate API and Worker services when you need independent scaling:
+
+```bash
+# Terminal 1: API only
+uvicorn api:app --port 8000
+
+# Terminal 2+: Workers only
+USE_KAFKA=true python worker.py
+```
+
+Multiple workers consume from same Kafka topic, process independently, scale horizontally. No job loss - Kafka persists messages.
 
 ## Crash Safety & Idempotency
 

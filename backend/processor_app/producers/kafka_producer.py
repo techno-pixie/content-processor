@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class KafkaProducerImpl(IProducer):
-    """Publishes submission processing messages to Kafka"""
     
     def __init__(
         self,
@@ -24,7 +23,6 @@ class KafkaProducerImpl(IProducer):
         self._initialize()
 
     def _initialize(self) -> None:
-        """Initialize Kafka producer"""
         try:
             self.producer = KafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
@@ -39,7 +37,6 @@ class KafkaProducerImpl(IProducer):
             raise
 
     def produce(self, submission_id: str, content: str) -> None:
-        """Publish submission to Kafka topic"""
         if not self.producer:
             logger.error("Kafka producer not initialized")
             return
@@ -56,11 +53,9 @@ class KafkaProducerImpl(IProducer):
             logger.error(f"[{submission_id}] Failed to publish to Kafka: {e}")
 
     def is_available(self) -> bool:
-        """Check if producer is available"""
         return self.producer is not None
 
     def shutdown(self) -> None:
-        """Gracefully shutdown producer"""
         if self.producer:
             self.producer.close()
         logger.info("Kafka producer shut down")

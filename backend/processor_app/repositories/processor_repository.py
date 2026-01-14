@@ -3,12 +3,13 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from processor_app.repositories.repository import Repository
 from processor_app.content_processor_service.schema import Base
+from processor_app.config import (DATABASE_URL)
 logger = logging.getLogger(__name__)
 
 
 class ProcessorRepository(Repository):
     def __init__(self) -> None:
-        DATABASE_URL = "sqlite+aiosqlite:///./submissions.db"
+        # DATABASE_URL = "sqlite+aiosqlite:///./submissions.db"
         self._engine = create_async_engine(
             DATABASE_URL,
             pool_pre_ping=True,
