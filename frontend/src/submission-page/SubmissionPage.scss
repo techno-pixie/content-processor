@@ -41,9 +41,38 @@
   min-height: 300px;
 }
 
-.results-section h2 {
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
+  gap: 20px;
+}
+
+.results-section h2 {
+  margin: 0;
   font-size: 1.5rem;
+}
+
+.refresh-btn {
+  padding: 8px 16px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 }
 
 .empty-state {
@@ -55,10 +84,80 @@
   border: 1px dashed var(--border-color);
 }
 
+.loading-state {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.error-message {
+  background-color: #fee;
+  color: #c00;
+  padding: 12px 16px;
+  border-radius: var(--border-radius);
+  margin-bottom: 20px;
+  border-left: 4px solid #c00;
+}
+
 .submissions-list {
   display: flex;
   flex-direction: column;
   gap: 15px;
+  margin-bottom: 30px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: var(--border-radius);
+  margin-top: 30px;
+}
+
+.pagination-btn {
+  padding: 8px 16px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background-color 0.3s ease;
+
+  &:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+
+  &:disabled {
+    background-color: #ddd;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.pagination-info {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+
+  .current-page {
+    font-weight: bold;
+    color: var(--primary-color);
+  }
+
+  .total-pages {
+    font-weight: bold;
+    color: var(--text-primary);
+  }
+
+  .total-count {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
 }
 
 @media (max-width: 768px) {
@@ -69,5 +168,19 @@
   .main {
     grid-template-columns: 1fr;
     gap: 30px;
+  }
+
+  .results-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .pagination-btn {
+    width: 100%;
   }
 }
