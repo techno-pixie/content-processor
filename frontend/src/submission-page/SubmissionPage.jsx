@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { submitContent, getSubmissionStatus, listSubmissions } from './api/submissionAPI';
 import SubmissionForm from './submission-form/SubmissionForm';
@@ -10,7 +11,7 @@ function SubmissionPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 2;
   const totalPages = Math.ceil(allSubmissions.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -110,13 +111,11 @@ function SubmissionPage() {
             </button>
           </div>
 
-          {error && (
+          {error ? (
             <div className="error-message">
               {error}
             </div>
-          )}
-
-          {isLoading && allSubmissions.length === 0 ? (
+          ):<>{isLoading && allSubmissions.length === 0 ? (
             <p className="loading-state">Loading submissions...</p>
           ) : allSubmissions.length === 0 ? (
             <p className="empty-state">No submissions yet. Submit content to get started!</p>
@@ -154,6 +153,7 @@ function SubmissionPage() {
               )}
             </>
           )}
+          </>}
         </section>
       </main>
     </div>

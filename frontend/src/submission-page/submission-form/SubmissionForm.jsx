@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState } from 'react';
 import './SubmissionForm.scss';
 
@@ -29,10 +30,10 @@ function SubmissionForm({ onSubmit }) {
         <label htmlFor="content">Content to Process:</label>
         <input
           id="content"
+          type="text"
           value={content}
           onChange={handleChange}
-          placeholder="Enter content to be processed..."
-          rows="4"
+          placeholder="Enter content to be processed (min 10 characters, must contain a digit)..."
         />
       </div>
       <button type="submit" disabled={isSubmitting}>

@@ -24,14 +24,15 @@ class ContentProcessorRepository:
     async def create(self, submission: ContentSubmissionRequest) -> Submission:
         try:
             async with self._get_session() as session:
-                submission_id = str(uuid.uuid4())
-                submission = Submission(
-                    id=submission_id,
-                    content=submission.content,
-                    status=SubmissionStatus.PENDING
-                )
-                session.add(submission)
-                await session.commit()
+                async with session.begin():
+                    submission_id = str(uuid.uuid4())
+                    submission = Submission(
+                        id=submission_id,
+                        content=submission.content,
+                        status=SubmissionStatus.PENDING
+                    )
+                    session.add(submission)
+                    await session.commit()
             
             if self.producer and self.producer.is_available():
                 logger.info(f"[{submission_id}] Triggering producer for submission")
@@ -44,7 +45,8 @@ class ContentProcessorRepository:
     async def get_by_id(self, submission_id: str) -> Optional[Submission]:
         try:
             async with self._get_session() as session:
-                return await self._get_by_id(session, submission_id)
+                async with session.begin():
+                    return await self._get_by_id(session, submission_id)
         except sqlalchemy.exc.SQLAlchemyError as e:
             raise e
         
@@ -53,24 +55,29 @@ class ContentProcessorRepository:
         self,
         submission_id: str,
         status: SubmissionStatus,
-        processed_at: Optional[datetime] = None
+        processed_at: Optional[datetime] = None,
+        processing_started_at: Optional[datetime] = None
     ) -> Optional[Submission]:
         try:
             async with self._get_session() as session:
-                submission = await self._get_by_id(session, submission_id)
-                if submission:
-                    submission.status = status
-                    if processed_at:
-                        submission.processed_at = processed_at
-                    await session.commit()
-                return submission
+                async with session.begin():
+                    submission = await self._get_by_id(session, submission_id)
+                    if submission:
+                        submission.status = status
+                        if processed_at:
+                            submission.processed_at = processed_at
+                        if processing_started_at:
+                            submission.processing_started_at = processing_started_at
+                        await session.commit()
+                    return submission
         except sqlalchemy.exc.IntegrityError as e:
             raise e
         
     async def list_all(self) -> List[Submission]:
         try:
             async with self._get_session() as session:
-                return await self._list_all(session)
+                async with session.begin():
+                    return await self._list_all(session)
         except sqlalchemy.exc.SQLAlchemyError as e:
             raise e
     
@@ -91,9 +98,10 @@ class ContentProcessorRepository:
     async def get_pending(self) -> List[Submission]:
         try:
             async with self._get_session() as session:
-                result = await session.execute(
-                    select(Submission).filter(Submission.status == SubmissionStatus.PENDING)
-                )
-                return result.scalars().all()
+                async with session.begin():
+                    result = await session.execute(
+                        select(Submission).filter(Submission.status == SubmissionStatus.PENDING)
+                    )
+                    return result.scalars().all()
         except sqlalchemy.exc.SQLAlchemyError as e:
             raise e

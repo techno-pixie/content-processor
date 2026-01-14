@@ -1,5 +1,7 @@
+import React from 'react';
 import './SubmissionStatus.scss';
 import moment from 'moment-timezone';
+
 function SubmissionStatus({ submission }) {
   const getStatusClass = (status) => {
     switch (status) {

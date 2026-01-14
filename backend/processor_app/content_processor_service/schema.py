@@ -1,7 +1,7 @@
 from enum import Enum
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Enum as SQLEnum
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
@@ -20,4 +20,5 @@ class Submission(Base):
     content = Column(String, nullable=False)
     status = Column(SQLEnum(SubmissionStatus), default=SubmissionStatus.PENDING, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    processed_at = Column(DateTime, nullable=True)
+    processing_started_at = Column(DateTime, nullable=True)  # Track when PROCESSING started
+    processed_at = Column(DateTime, nullable=True)  # When finally PASSED/FAILED
